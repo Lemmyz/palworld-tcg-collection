@@ -1,0 +1,5 @@
+IF DB_ID('PalworldTCG') IS NULL
+BEGIN
+    CREATE DATABASE PalworldTCG;
+END;
+GO
