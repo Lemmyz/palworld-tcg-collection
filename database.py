@@ -11,20 +11,26 @@ CONNECTION_STRING = (
 )
 
 
-try:
-    connection = pyodbc.connect(CONNECTION_STRING)
-    cursor = connection.cursor()
+def get_connection():
+    """Create and return a connection to the PalworldTCG database."""
+    return pyodbc.connect(CONNECTION_STRING)
 
-    cursor.execute("SELECT DB_NAME();")
-    database_name = cursor.fetchone()[0]
 
-    print("Connection successful!")
-    print(f"Connected to database: {database_name}")
+def test_connection():
+    """Check that Python can connect to the database."""
+    try:
+        with get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute("SELECT DB_NAME();")
+            database_name = cursor.fetchone()[0]
 
-except pyodbc.Error as error:
-    print("Connection failed:")
-    print(error)
+            print("Connection successful!")
+            print(f"Connected to database: {database_name}")
 
-finally:
-    if "connection" in locals():
-        connection.close()
+    except pyodbc.Error as error:
+        print("Connection failed:")
+        print(error)
+
+
+if __name__ == "__main__":
+    test_connection()
