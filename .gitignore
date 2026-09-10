@@ -15,3 +15,11 @@ __pycache__/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Local collection data, test caches and build products
+*.sqlite3
+*.sqlite3-*
+.pytest_cache/
+build/
+dist/
+*.spec
