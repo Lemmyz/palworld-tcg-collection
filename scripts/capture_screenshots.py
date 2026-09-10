@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFontDatabase
+from PySide6.QtCore import QCoreApplication, QEvent
 from palvault.repository import Repository
 from palvault.theme import STYLE
 from palvault.ui import MainWindow
@@ -35,6 +36,7 @@ def main():
         app.processEvents()
         window.grab().save(str(output / "catalogue.png"))
         window.switch_view("collection")
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
         window.grab().save(str(output / "collection.png"))
         window.close()
