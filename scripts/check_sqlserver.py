@@ -56,7 +56,15 @@ def main():
         repo.save_card(dict(saved, CardName="Edited integration card"), saved["CardID"])
         repo.delete_card(saved["CardID"])
         assert len(repo.cards()) == 3 and repo.stats()["copies"] == 0
-        print("SQL Server integration passed: repeatable setup, card CRUD, collection CRUD, joins, totals, deletion protection.")
+        repo.save_entry(card["CardID"], {"Quantity": 2, "CardCondition": "Mint"})
+        before = repo.entries()
+        result = repo.import_catalogue()
+        assert result["cards_added"] == 253 and result["sets_added"] == 3
+        assert len(repo.cards()) == 256
+        assert repo.entries() == before
+        assert repo.import_catalogue()["cards_added"] == 0
+        assert len([c for c in repo.cards() if c["CardNumber"] == "ESOUL-001"]) == 2
+        print("SQL Server integration passed: repeatable setup, CRUD, full catalogue import, idempotency, and preserved collection entries.")
     finally:
         if repo:
             repo.close()

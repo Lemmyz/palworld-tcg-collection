@@ -12,7 +12,7 @@ import sqlite3
 
 CONDITIONS = ("Mint", "Near Mint", "Lightly Played", "Moderately Played", "Heavily Played", "Damaged")
 COLOURS = ("Red", "Blue", "Green", "Yellow", "Purple", "Black", "White", "Colourless")
-TYPES = ("Pal", "Structure", "Gear", "Event")
+TYPES = ("Pal", "Structure", "Gear", "Event", "Soul")
 
 
 class ValidationError(ValueError):
@@ -32,7 +32,7 @@ class Repository:
         self.backend = backend
 
     @classmethod
-    def demo(cls, path):
+    def demo(cls, path, seed_catalogue=True):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(path)
@@ -68,7 +68,45 @@ class Repository:
                 ):
                     connection.execute("INSERT INTO Cards (SetID,CardNumber,CardName,CardType,CardColour,Rarity,Variant) VALUES (1,?,?, 'Pal','Red',?,'Standard')", (number, name, rarity))
                 connection.execute("INSERT INTO AppMetadata VALUES ('seed_version', '1')")
+        if seed_catalogue:
+            repo.import_catalogue()
         return repo
+
+    def import_catalogue(self, force=False):
+        """Add missing official printings once per snapshot, retaining IDs and edits.
+
+        Owned copies are never touched. Deleted cards stay deleted on subsequent
+        launches of the same snapshot. An explicit force import restores missing
+        catalogue rows but does not overwrite existing records.
+        """
+        from .catalogue import snapshot
+        data = snapshot()
+        result = {"sets_added": 0, "cards_added": 0, "version": data["version"]}
+        with self.transaction():
+            if self.backend == "sqlserver":
+                self.connection.execute("""IF OBJECT_ID('dbo.AppMetadata', 'U') IS NULL
+                    CREATE TABLE dbo.AppMetadata ([Key] NVARCHAR(100) PRIMARY KEY, [Value] NVARCHAR(100) NOT NULL)""")
+            marker = self.query("SELECT [Value] FROM AppMetadata WHERE [Key] = ?", ("official_catalogue_version",))
+            if marker and marker[0]["Value"] == data["version"] and not force:
+                return result
+            existing_sets = {s["SetCode"]: s["SetID"] for s in self.sets()}
+            for item in data["sets"]:
+                if item["code"] not in existing_sets:
+                    self.connection.execute("INSERT INTO CardSets (SetCode,SetName,ReleaseDate) VALUES (?,?,?)", (item["code"], item["name"], item["release_date"]))
+                    result["sets_added"] += 1
+            set_ids = {s["SetCode"]: s["SetID"] for s in self.sets()}
+            existing = {(c["SetCode"], c["CardNumber"], c["Variant"]) for c in self.cards()}
+            for card in data["cards"]:
+                if (card["set"], card["number"], card["variant"]) in existing:
+                    continue
+                self.connection.execute("""INSERT INTO Cards
+                    (SetID,CardNumber,CardName,CardType,CardColour,Rarity,Variant)
+                    VALUES (?,?,?,?,?,?,?)""", (set_ids[card["set"]], card["number"], card["name"], card["type"],
+                    "Colourless" if card["colour"] == "Colorless" else card["colour"], card["rarity"], card["variant"]))
+                result["cards_added"] += 1
+            self.connection.execute("DELETE FROM AppMetadata WHERE [Key] = ?", ("official_catalogue_version",))
+            self.connection.execute("INSERT INTO AppMetadata ([Key],[Value]) VALUES (?,?)", ("official_catalogue_version", data["version"]))
+        return result
 
     @classmethod
     def sqlserver(cls):
@@ -121,7 +159,10 @@ class Repository:
             ("CardNumber", "Card number", 20), ("CardName", "Card name", 100),
             ("CardType", "Card type", 30), ("Rarity", "Rarity", 20),
             ("Variant", "Variant", 50))}
-        data["CardColour"] = required(values.get("CardColour"), "Colour", 30)
+        colour = str(values.get("CardColour") or "").strip()
+        if len(colour) > 30:
+            raise ValidationError("Colour must be 30 characters or fewer.")
+        data["CardColour"] = colour or None
         data["SetID"] = values.get("SetID")
         if not self.query("SELECT SetID FROM CardSets WHERE SetID = ?", (data["SetID"],)):
             raise ValidationError("Choose an existing card set.")

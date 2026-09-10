@@ -38,14 +38,18 @@ platform is Windows 11; the portable data layer is cross-platform.
 ## Features
 
 - Browse cards with artwork, rarity, colour, type, variant, and set information.
-- Search by name or card number; filter by colour and ownership.
+- Search by name or card number; filter by set, rarity, variant, colour, and ownership.
+- Browse 256 official English printings across four sets/promo groups, with
+  89 parallel printings, all 13 published rarity labels, and offline artwork.
+- Page through the catalogue in groups of 12 for responsive browsing.
 - Add, edit, and delete catalogue records, with duplicate protection.
 - Track multiple collection entries per card: quantity, condition, price per
   copy, acquisition date, storage location, and availability for trade.
 - Edit or remove owned copies without deleting the catalogue card.
 - View total copies, unique cards collected, and recorded purchase spend.
-- View verified cost, power, strike, element, and subtype for the three starter
-  cards; open the official catalogue for card text and current rulings.
+- View published cost, power, strike, element, subtype, and work suitability;
+  open the exact official printing for card text and current rulings. Fields
+  that do not apply to a card, such as Soul-card combat stats, stay absent.
 - Persist changes across restarts. Cancelled dialogs make no changes.
 - Keyboard shortcuts: **Ctrl+F** search, **Ctrl+N** new card, **F5** refresh.
 
@@ -69,13 +73,14 @@ The app connects directly to the original `CardSets`, `Cards`, and
 1. Install SQL Server Express and **Microsoft ODBC Driver 18 for SQL Server**.
 2. In SQL Server Management Studio, connect using Windows Authentication and run
    the scripts in `sql/` in numerical order, **01 through 05**.
-3. Start the desktop app:
+3. Import the bundled catalogue, then start the desktop app:
 
 ```powershell
-python -m palvault --sqlserver
+python -m palvault --sqlserver --import-catalogue
 ```
 
-For the packaged app, run `Palvault.exe --sqlserver` from its folder. The default
+For the packaged app, run `Palvault.exe --sqlserver --import-catalogue` once,
+then use `Palvault.exe --sqlserver` for subsequent launches. The default
 server is `localhost\SQLEXPRESS`, database `PalworldTCG`, with Windows
 Authentication. To use another server, set `PALVAULT_CONNECTION_STRING` in the
 environment before starting the app. Never commit credentials.
@@ -83,7 +88,9 @@ environment before starting the app. Never commit credentials.
 Setup scripts are additive and safe to rerun. Script 05 fills the gap in the
 original repository's collection-table setup. Startup does not run SQL Server
 migrations or seed data. A failed connection is reported; the app never silently
-switches databases. The original CLI reader remains available as `python main.py`.
+switches databases. The explicit `--import-catalogue` option adds missing sets
+and printings without replacing existing card IDs, edits, or owned copies.
+The original CLI reader remains available as `python main.py`.
 
 ## Architecture
 
@@ -92,7 +99,7 @@ flowchart LR
     UI[PySide6 desktop interface] --> R[Repository and validation]
     R --> SQL[SQL Server via pyodbc]
     R --> Demo[SQLite portable demo]
-    UI --> Ref[Verified starter card references]
+    UI --> Ref[Verified official catalogue snapshot]
 ```
 
 ```mermaid
@@ -171,14 +178,25 @@ Screenshots use disposable example data, not a private collection.
 
 ## Data and current scope
 
-- The catalogue starts with **three cards**, not a full set. Add custom cards
-  through the app. New card sets currently require SQL rather than a set editor.
+- The bundled snapshot contains **all 256 printings in the official English
+  catalogue retrieved on 10 September 2026**. See [catalogue coverage](docs/CATALOGUE.md)
+  for set totals, rarity counts, verification, and update instructions. This
+  is a dated English snapshot, not a claim to include unrevealed or Japanese-only cards.
+- All official sets are imported. Add custom cards through the app. Custom set
+  creation still uses SQL rather than a set editor.
 - Demo and SQL Server collections are separate and do not synchronise. On
   Windows, demo data lives at `%LOCALAPPDATA%\Palvault\demo.sqlite3`. Copy it
   while the app is closed to back it up. Override its location using
   `python -m palvault --demo-db path/to/collection.sqlite3`.
-- Artwork and reference stats are bundled for the three verified standard
-  starter cards. Custom cards show their entered catalogue details.
+- Artwork and published reference stats are bundled for every official printing.
+  Custom cards show their entered catalogue details. Full official numbers,
+  including rarity suffixes, are retained; parallel status comes from the
+  official filter rather than an inference from rarity.
+- The demo imports missing official printings once per snapshot version, keeping
+  existing records and owned copies. A deleted card stays deleted on later
+  launches of the same version. An explicit `--import-catalogue` restores missing
+  official catalogue records. SQLite also stores a snapshot marker in `AppMetadata`;
+  the SQL Server importer creates the same table when first used.
 - Spend means recorded purchase costs in GBP, not market value. The collected
   fraction is relative to the local catalogue, not full-set completion.
 - This is a single-user desktop app, with no hosted browser demo or cloud sync.

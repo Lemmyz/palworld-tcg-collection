@@ -15,7 +15,7 @@ def app():
 
 
 def test_forms_search_and_collection_refresh(app, tmp_path):
-    repo = Repository.demo(tmp_path / "ui.sqlite3")
+    repo = Repository.demo(tmp_path / "ui.sqlite3", seed_catalogue=False)
     window = MainWindow(repo, "Test demo")
     window.show()
     app.processEvents()
@@ -43,7 +43,7 @@ def test_forms_search_and_collection_refresh(app, tmp_path):
 
 
 def test_delete_cancel_preserves_record(app, tmp_path, monkeypatch):
-    repo = Repository.demo(tmp_path / "cancel.sqlite3")
+    repo = Repository.demo(tmp_path / "cancel.sqlite3", seed_catalogue=False)
     window = MainWindow(repo, "Test demo")
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Cancel)
     window.remove_card(repo.cards()[0])
@@ -53,7 +53,7 @@ def test_delete_cancel_preserves_record(app, tmp_path, monkeypatch):
 
 
 def test_start_menu_navigation_preserves_collection(app, tmp_path):
-    repo = Repository.demo(tmp_path / "welcome.sqlite3")
+    repo = Repository.demo(tmp_path / "welcome.sqlite3", seed_catalogue=False)
     window = MainWindow(repo, "Test demo")
     assert window.pages.currentIndex() == 1
     window.start_catalogue.click()

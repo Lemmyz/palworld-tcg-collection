@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from .repository import COLOURS, CONDITIONS, TYPES, ValidationError
 from .card_reference import artwork_for, reference_for
+from .catalogue import snapshot
 
 
 def label(text, style=None, wrap=False):
@@ -38,6 +39,7 @@ def clear_layout(layout):
     while layout.count():
         item = layout.takeAt(0)
         if item.widget():
+            item.widget().hide()
             item.widget().deleteLater()
         elif item.layout():
             clear_layout(item.layout())
@@ -65,8 +67,8 @@ class CardEditor(QDialog):
         for key, title, choices, limit in (
             ("CardNumber", "Card number", None, 20), ("CardName", "Card name", None, 100),
             ("CardType", "Card type", TYPES, 30), ("CardColour", "Colour", COLOURS, 30),
-            ("Rarity", "Rarity", ("C", "U", "R", "RR", "SR", "OSR", "SP", "SSP"), 20),
-            ("Variant", "Variant", ("Standard", "Parallel"), 50),
+            ("Rarity", "Rarity", tuple(snapshot()["rarities"]), 20),
+            ("Variant", "Variant", tuple(sorted({c["variant"] for c in snapshot()["cards"]}, key=lambda v: (v != "Standard", v))), 50),
         ):
             if choices:
                 field = QComboBox()
@@ -162,6 +164,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.repo, self.mode = repo, mode
         self.view, self.selected_id = "catalogue", None
+        self.page_index, self.page_size = 0, 12
         self.all_cards, self.all_entries = [], []
         self.setWindowTitle("Palvault — Palworld TCG Collection")
         self.resize(1420, 910)
@@ -228,23 +231,52 @@ class MainWindow(QMainWindow):
         self.colour.setAccessibleName("Filter by colour")
         self.colour.addItems(["All colours", *COLOURS])
         self.colour.currentTextChanged.connect(self.render)
-        controls.addWidget(self.colour)
         self.ownership = QComboBox()
         self.ownership.setAccessibleName("Filter by ownership")
         self.ownership.addItems(["All cards", "Owned", "Missing"])
         self.ownership.currentTextChanged.connect(self.render)
-        controls.addWidget(self.ownership)
         controls.addWidget(button("Refresh", self.refresh))
         layout.addLayout(controls)
+        filters = QGridLayout()
+        self.set_filter = QComboBox()
+        self.set_filter.setAccessibleName("Filter by set")
+        self.set_filter.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.set_filter.setMinimumContentsLength(12)
+        self.rarity_filter = QComboBox()
+        self.rarity_filter.setAccessibleName("Filter by rarity")
+        self.variant_filter = QComboBox()
+        self.variant_filter.setAccessibleName("Filter by variant")
+        for field in (self.set_filter, self.rarity_filter, self.variant_filter):
+            field.currentIndexChanged.connect(self.render)
+        filters.addWidget(self.set_filter, 0, 0)
+        filters.addWidget(self.rarity_filter, 0, 1)
+        filters.addWidget(self.variant_filter, 0, 2)
+        filters.addWidget(self.colour, 1, 0)
+        filters.addWidget(self.ownership, 1, 1)
+        filters.addWidget(button("Clear filters", self.clear_filters), 1, 2)
+        for col in range(3):
+            filters.setColumnStretch(col, 1)
+        layout.addLayout(filters)
         self.result_label = label("", "muted")
         layout.addWidget(self.result_label)
         scroll = QScrollArea()
+        self.catalogue_scroll = scroll
         scroll.setWidgetResizable(True)
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(0, 0, 8, 0)
         scroll.setWidget(self.content)
         layout.addWidget(scroll, 1)
+        pager = QHBoxLayout()
+        self.previous_page = button("Previous", lambda: self.change_page(-1))
+        self.next_page = button("Next", lambda: self.change_page(1))
+        self.page_label = label("", "muted")
+        pager.addWidget(self.previous_page)
+        pager.addStretch()
+        pager.addWidget(self.page_label)
+        pager.addStretch()
+        pager.addWidget(self.next_page)
+        layout.addLayout(pager)
         root.addWidget(workspace, 1)
 
         detail_scroll = QScrollArea()
@@ -284,7 +316,7 @@ class MainWindow(QMainWindow):
         columns.setSpacing(24)
         for eyebrow, heading, sections in (
             ("EXPLORE YOUR COLLECTION", "What you can do", (
-                ("Browse and discover", "Search the catalogue, filter cards, and view card details. The three starter cards include artwork and gameplay stats."),
+                ("Browse and discover", "Explore the official English catalogue with artwork and card stats. Filter by set, rarity, variant, colour, or ownership."),
                 ("Build your collection", "Add cards you own and record their quantity, condition, purchase price, storage location, and trade status."),
                 ("Keep it up to date", "Edit your records, remove copies, and see your total cards and recorded spend."),
             )),
@@ -332,6 +364,20 @@ class MainWindow(QMainWindow):
         except Exception:
             QMessageBox.critical(self, "Unable to load collection", "Check the database connection and setup scripts, then select Refresh. Your saved data has not been changed.")
             return
+        options = (
+            (self.set_filter, "All sets", [(s["SetCode"] + " · " + s["SetName"], s["SetCode"]) for s in self.repo.sets()]),
+            (self.rarity_filter, "All rarities", [(r, r) for r in sorted({c["Rarity"] for c in self.all_cards})]),
+            (self.variant_filter, "All variants", [(v, v) for v in sorted({c["Variant"] for c in self.all_cards})]),
+        )
+        for field, title, items in options:
+            selected = field.currentData()
+            field.blockSignals(True)
+            field.clear()
+            field.addItem(title, None)
+            for text, value in items:
+                field.addItem(text, value)
+            field.setCurrentIndex(max(0, field.findData(selected)))
+            field.blockSignals(False)
         clear_layout(self.stat_layout)
         for value, title in ((f"{stats['copies']:,}", "Cards owned"),
                              (f"{stats['unique']} / {stats['catalogue']}", "Catalogue collected"),
@@ -360,21 +406,49 @@ class MainWindow(QMainWindow):
         term = self.search.text().strip().casefold()
         return [c for c in self.all_cards
                 if (not term or term in f"{c['CardName']} {c['CardNumber']}".casefold())
+                and (self.set_filter.currentData() is None or c["SetCode"] == self.set_filter.currentData())
+                and (self.rarity_filter.currentData() is None or c["Rarity"] == self.rarity_filter.currentData())
+                and (self.variant_filter.currentData() is None or c["Variant"] == self.variant_filter.currentData())
                 and (self.colour.currentIndex() == 0 or c["CardColour"] == self.colour.currentText())
                 and (self.ownership.currentIndex() == 0 or (c["Owned"] > 0) == (self.ownership.currentText() == "Owned"))]
 
-    def render(self, *_):
+    def clear_filters(self):
+        for field in (self.search, self.set_filter, self.rarity_filter, self.variant_filter, self.colour, self.ownership):
+            field.blockSignals(True)
+            if isinstance(field, QLineEdit):
+                field.clear()
+            else:
+                field.setCurrentIndex(0)
+            field.blockSignals(False)
+        self.render()
+
+    def change_page(self, step):
+        self.page_index += step
+        self.render(reset_page=False)
+
+    def render(self, *_, reset_page=True):
+        if reset_page:
+            self.page_index = 0
         clear_layout(self.content_layout)
         cards = self.filtered_cards()
+        self.catalogue_scroll.verticalScrollBar().setValue(0)
+        for widget in (self.previous_page, self.next_page, self.page_label):
+            widget.setVisible(self.view == "catalogue")
         if self.view == "collection":
             self.render_collection(cards)
             return
-        self.result_label.setText(f"{len(cards)} cards  ·  Select a record to view details")
+        page_count = max(1, (len(cards) + self.page_size - 1) // self.page_size)
+        self.page_index = max(0, min(self.page_index, page_count - 1))
+        self.previous_page.setEnabled(self.page_index > 0)
+        self.next_page.setEnabled(self.page_index + 1 < page_count)
+        self.page_label.setText(f"Page {self.page_index + 1} of {page_count}")
+        self.result_label.setText(f"{len(cards)} card printings  ·  Select a record to view details")
         if not cards:
             self.content_layout.addWidget(label("No cards match. Clear the filters or add a new card.", "muted", True))
         grid = QGridLayout()
         grid.setSpacing(16)
-        for index, card in enumerate(cards):
+        self.visible_cards = cards[self.page_index * self.page_size:(self.page_index + 1) * self.page_size]
+        for index, card in enumerate(self.visible_cards):
             tile = QFrame()
             tile.setObjectName("card")
             tile.setMinimumWidth(200)
@@ -398,10 +472,10 @@ class MainWindow(QMainWindow):
                 thumbnail.setAccessibleName(f"Artwork for {card['CardName']}")
                 thumbnail.setPixmap(QPixmap(str(artwork)).scaledToHeight(180, Qt.TransformationMode.SmoothTransformation))
                 tile_layout.addWidget(thumbnail)
-            name, _, subtitle = card["CardName"].partition(" - ")
+            name, _, subtitle = card["CardName"].replace(" – ", " - ").partition(" - ")
             tile_layout.addWidget(label(name, "heading", True))
             tile_layout.addWidget(label(subtitle or card["Variant"], "muted", True))
-            tile_layout.addSpacing(12)
+            tile_layout.addWidget(label(card["SetCode"], "number"))
             tile_layout.addWidget(label(f"{card['CardColour'] or 'Unspecified'} / {card['CardType']} / {card['Variant']}", "muted", True))
             tile_layout.addWidget(label(f"{card['Owned']} owned" if card["Owned"] else "Not collected", "badge"))
             tile_layout.addStretch()
@@ -471,8 +545,14 @@ class MainWindow(QMainWindow):
         self.detail_layout.addWidget(label(f"{card['Rarity']}  ·  {card['Variant']}", "badge", True))
         reference = reference_for(card)
         if reference:
-            self.detail_layout.addWidget(label(f"COST {reference['cost']}    POWER {reference['power']}    STRIKE {reference['strike']}", "badge", True))
-            self.detail_layout.addWidget(label(f"{reference['element']} · {reference['subtype']}", "muted", True))
+            stats = "    ".join(f"{title} {reference[key]}" for key, title in (("cost", "COST"), ("power", "POWER"), ("strike", "STRIKE")) if reference[key] is not None)
+            if stats:
+                self.detail_layout.addWidget(label(stats, "badge", True))
+            extra = " · ".join(value for value in (reference["element"], reference["subtype"]) if value)
+            if extra:
+                self.detail_layout.addWidget(label(extra, "muted", True))
+            if reference["work_suitability"]:
+                self.detail_layout.addWidget(label("Work: " + reference["work_suitability"], "muted", True))
         for title, value in (("SET", card["SetName"]), ("RELEASE DATE", card["ReleaseDate"] or "Not recorded"),
                              ("TYPE / COLOUR", f"{card['CardType']} / {card['CardColour'] or 'Unspecified'}"),
                              ("IN YOUR COLLECTION", f"{card['Owned']} copies")):
@@ -540,5 +620,9 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def open_official(card):
+        reference = reference_for(card)
+        if reference:
+            QDesktopServices.openUrl(QUrl(reference["source"]))
+            return
         query = urlencode({"keyword": card["CardNumber"]})
         QDesktopServices.openUrl(QUrl("https://en.palworld-official-cardgame.com/cardlist/searchresults/?" + query))

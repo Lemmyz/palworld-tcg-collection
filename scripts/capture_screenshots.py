@@ -9,10 +9,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFontDatabase
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QTimer
 from palvault.repository import Repository
 from palvault.theme import STYLE
 from palvault.ui import MainWindow
+
+
+def settle():
+    # Let posted show/layout events complete after replacing a whole card page.
+    loop = QEventLoop()
+    QTimer.singleShot(100, loop.quit)
+    loop.exec()
 
 
 def main():
@@ -33,14 +40,15 @@ def main():
         })
         window = MainWindow(repo, "Demo · example collection")
         window.show()
-        app.processEvents()
+        settle()
         window.grab().save(str(output / "start-menu.png"))
         window.switch_view("catalogue")
-        app.processEvents()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        settle()
         window.grab().save(str(output / "catalogue.png"))
         window.switch_view("collection")
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        app.processEvents()
+        settle()
         window.grab().save(str(output / "collection.png"))
         window.close()
         repo.close()

@@ -5,7 +5,7 @@ from palvault.repository import Repository, ValidationError
 
 @pytest.fixture
 def repo(tmp_path):
-    instance = Repository.demo(tmp_path / "collection.sqlite3")
+    instance = Repository.demo(tmp_path / "collection.sqlite3", seed_catalogue=False)
     yield instance
     instance.close()
 
@@ -74,11 +74,11 @@ def test_blank_price_is_distinct_from_free(repo):
 
 def test_persistence_and_no_reseeding_deleted_cards(tmp_path):
     path = tmp_path / "persist.sqlite3"
-    repo = Repository.demo(path)
+    repo = Repository.demo(path, seed_catalogue=False)
     repo.delete_card(repo.cards()[0]["CardID"])
     repo.save_entry(repo.cards()[0]["CardID"], entry())
     repo.close()
-    reopened = Repository.demo(path)
+    reopened = Repository.demo(path, seed_catalogue=False)
     assert len(reopened.cards()) == 2
     assert reopened.stats()["copies"] == 2
     reopened.close()

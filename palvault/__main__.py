@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description="Palvault — Palworld TCG collection manager")
     parser.add_argument("--sqlserver", action="store_true", help="Use the original SQL Server database")
     parser.add_argument("--demo-db", type=Path, help="Override the SQLite demo database location")
+    parser.add_argument("--import-catalogue", action="store_true", help="Add missing cards from the bundled official catalogue before opening")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Palvault")
@@ -28,6 +29,8 @@ def main():
             default = Path(os.getenv("LOCALAPPDATA", str(Path.home() / ".local" / "share"))) / "Palvault" / "demo.sqlite3"
             repo = Repository.demo(args.demo_db or default)
             mode = "Demo · saved on this device"
+        if args.import_catalogue:
+            repo.import_catalogue(force=True)
     except Exception:
         QMessageBox.critical(None, "Unable to open database", "Could not open the selected database. For SQL Server, check the service, ODBC Driver 18, and run sql/01 through sql/05 in order. To try the portable demo, start without --sqlserver.")
         return 1
