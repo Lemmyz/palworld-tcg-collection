@@ -50,3 +50,22 @@ def test_delete_cancel_preserves_record(app, tmp_path, monkeypatch):
     assert len(repo.cards()) == 3
     window.close()
     repo.close()
+
+
+def test_start_menu_navigation_preserves_collection(app, tmp_path):
+    repo = Repository.demo(tmp_path / "welcome.sqlite3")
+    window = MainWindow(repo, "Test demo")
+    assert window.pages.currentIndex() == 1
+    window.start_catalogue.click()
+    assert window.pages.currentIndex() == 0
+    assert window.view == "catalogue"
+    window.show_start_menu()
+    window.start_collection.click()
+    assert window.pages.currentIndex() == 0
+    assert window.view == "collection"
+    window.show_start_menu()
+    assert window.pages.currentIndex() == 1
+    assert len(repo.cards()) == 3
+    assert repo.entries() == []
+    window.close()
+    repo.close()

@@ -6,6 +6,12 @@ A Python desktop application for browsing Palworld cards and managing a personal
 collection. Built with **PySide6, SQL Server, T-SQL, and pyodbc**, with a portable
 SQLite demo so employers can evaluate the application without a database server.
 
+![Palvault start menu](docs/start-menu.png)
+
+The app opens with a start menu explaining what Palvault does and how to use it.
+Choose **Open card catalogue** or **Open my collection** to begin. Return to the
+guide at any time using **Start menu** in the sidebar.
+
 ![Palvault card catalogue](docs/catalogue.png)
 
 ## Try it
@@ -47,7 +53,7 @@ platform is Windows 11; the portable data layer is cross-platform.
 
 ### Evaluation walkthrough
 
-1. Open the demo and select **Jormuntide Ignis**.
+1. Open the demo, choose **Open card catalogue**, and select **Jormuntide Ignis**.
 2. Choose **Add to collection**, enter a quantity and optional purchase details,
    then save. The owned count and totals update immediately.
 3. Open **My collection**, select the entry, and edit its quantity or condition.

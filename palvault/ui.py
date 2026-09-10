@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox, QFormLayout, QFrame, QGridLayout, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSpinBox,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QStackedWidget,
 )
 
 from .repository import COLOURS, CONDITIONS, TYPES, ValidationError
@@ -167,7 +167,9 @@ class MainWindow(QMainWindow):
         self.resize(1420, 910)
         self.setMinimumSize(1060, 720)
         shell = QWidget()
-        self.setCentralWidget(shell)
+        self.pages = QStackedWidget()
+        self.setCentralWidget(self.pages)
+        self.pages.addWidget(shell)
         root = QHBoxLayout(shell)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -181,6 +183,7 @@ class MainWindow(QMainWindow):
         nav.addWidget(label("PALVAULT", "heading"))
         nav.addWidget(label("PALWORLD TCG", "number"))
         nav.addSpacing(38)
+        nav.addWidget(button("Start menu", self.show_start_menu, "nav"))
         nav.addWidget(label("YOUR ARCHIVE", "eyebrow"))
         group = QButtonGroup(self)
         self.nav_buttons = {}
@@ -258,6 +261,68 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self.new_card)
         QShortcut(QKeySequence("F5"), self, activated=self.refresh)
         self.refresh()
+        self.pages.addWidget(self.build_start_menu())
+        self.show_start_menu()
+
+    def build_start_menu(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        page = QWidget()
+        scroll.setWidget(page)
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(48, 36, 48, 36)
+        outer.setSpacing(22)
+        top = QHBoxLayout()
+        top.addWidget(label("P / V     PALVAULT", "eyebrow"))
+        top.addStretch()
+        top.addWidget(label(self.mode, "badge"))
+        outer.addLayout(top)
+        outer.addStretch(1)
+        outer.addWidget(label("Your cards. All in one place.", "title", True))
+        outer.addWidget(label("Palvault is your personal Palworld trading card collection manager. Browse card information, keep track of what you own, and organise every copy.", "muted", True))
+        columns = QHBoxLayout()
+        columns.setSpacing(24)
+        for eyebrow, heading, sections in (
+            ("EXPLORE YOUR COLLECTION", "What you can do", (
+                ("Browse and discover", "Search the catalogue, filter cards, and view card details. The three starter cards include artwork and gameplay stats."),
+                ("Build your collection", "Add cards you own and record their quantity, condition, purchase price, storage location, and trade status."),
+                ("Keep it up to date", "Edit your records, remove copies, and see your total cards and recorded spend."),
+            )),
+            ("A QUICK START", "How to use Palvault", (
+                ("01  Choose a card", "Open the card catalogue and select View card. Use New card if your card is not listed yet."),
+                ("02  Add your owned copies", "Select Add to collection, enter the details, then Save. You can add separate entries for different purchases or conditions."),
+                ("03  Manage your collection", "Open My collection, select an entry, then edit or remove it. Removing owned copies keeps the catalogue card available."),
+            )),
+        ):
+            panel = QFrame()
+            panel.setObjectName("panel")
+            content = QVBoxLayout(panel)
+            content.setContentsMargins(26, 24, 26, 24)
+            content.setSpacing(14)
+            content.addWidget(label(eyebrow, "eyebrow"))
+            content.addWidget(label(heading, "heading", True))
+            for title, description in sections:
+                content.addWidget(label(title))
+                content.addWidget(label(description, "muted", True))
+            content.addStretch()
+            columns.addWidget(panel, 1)
+        outer.addLayout(columns)
+        outer.addWidget(label("Your changes are saved when you select Save. Return to this guide at any time using Start menu in the sidebar.", "muted", True))
+        actions = QHBoxLayout()
+        self.start_catalogue = button("Open card catalogue", lambda: self.switch_view("catalogue"), "primary")
+        self.start_collection = button("Open my collection", lambda: self.switch_view("collection"))
+        actions.addWidget(self.start_catalogue)
+        actions.addWidget(self.start_collection)
+        actions.addStretch()
+        actions.addWidget(button("Exit", self.close))
+        outer.addLayout(actions)
+        outer.addStretch(1)
+        outer.addWidget(label("Demo and SQL Server collections are separate. The active collection is shown above.\nUnofficial fan project · Not affiliated with Pocketpair or Bushiroad.", "muted", True))
+        return scroll
+
+    def show_start_menu(self):
+        self.pages.setCurrentIndex(1)
+        self.statusBar().showMessage("Welcome to Palvault · Choose a catalogue or collection to get started")
 
     def refresh(self):
         try:
@@ -285,6 +350,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"{self.mode}  ·  Changes save automatically after confirmation  ·  Ctrl+F search  /  Ctrl+N new card")
 
     def switch_view(self, key):
+        self.pages.setCurrentIndex(0)
         self.view = key
         self.nav_buttons[key].setChecked(True)
         self.title.setText("Card catalogue" if key == "catalogue" else "My collection")
